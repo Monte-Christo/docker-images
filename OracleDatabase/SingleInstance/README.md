@@ -6,6 +6,7 @@ Sample container build files to facilitate installation, configuration, and envi
 
 This project offers sample Dockerfiles for:
 
+* Oracle Database 21c (21.3.0) Enterprise Edition and Standard Edition 2
 * Oracle Database 19c (19.3.0) Enterprise Edition and Standard Edition 2
 * Oracle Database 18c (18.4.0) Express Edition (XE)
 * Oracle Database 18c (18.3.0) Enterprise Edition and Standard Edition 2
@@ -25,12 +26,13 @@ Before you build the image make sure that you have provided the installation bin
 
     [oracle@localhost dockerfiles]$ ./buildContainerImage.sh -h
     
-    Usage: buildContainerImage.sh -v [version] [-e | -s | -x] [-i] [-o] [container build option]
+    Usage: buildContainerImage.sh -v [version] -t [image_name:tag] [-e | -s | -x] [-i] [-o] [container build option]
     Builds a container image for Oracle Database.
     
     Parameters:
        -v: version to build
-           Choose one of: 11.2.0.2  12.1.0.2  12.2.0.1  18.3.0  18.4.0  19.3.0  
+           Choose one of: 11.2.0.2  12.1.0.2  12.2.0.1  18.3.0  18.4.0  19.3.0  21.3.0
+       -t: image_name:tag for the generated docker image
        -e: creates image based on 'Enterprise Edition'
        -s: creates image based on 'Standard Edition 2'
        -x: creates image based on 'Express Edition'
@@ -53,6 +55,10 @@ You may extend the image with your own Dockerfile and create the users and table
 
 The character set for the database is set during creating of the database. 11gR2 Express Edition supports only UTF-8. You can set the character set for the Standard Edition 2 and Enterprise Edition during the first run of your container and may keep separate folders containing different tablespaces with different character sets.
 
+**NOTE**: This section is intended for container images 19c or higher which has patching extension support. By default, SLIMMING is **true** to remove some components from the image with the intention of making the image slimmer. These removed components cause problems while patching after building patching extension. So, to use patching extension one should use additional build argument `-o '--build-arg SLIMMING=false'` while building the container image. Example command for building the container image is as follows:
+
+    ./buildContainerImage.sh -e -v 21.3.0 -o '--build-arg SLIMMING=false'
+
 ### Running Oracle Database in a container
 
 #### Running Oracle Database Enterprise and Standard Edition 2 in a container
@@ -68,8 +74,9 @@ To run your Oracle Database image use the `docker run` command as follows:
     -e INIT_PGA_SIZE=<your database PGA memory in MB> \
     -e ORACLE_EDITION=<your database edition> \
     -e ORACLE_CHARACTERSET=<your character set> \
+    -e ENABLE_ARCHIVELOG=true \
     -v [<host mount point>:]/opt/oracle/oradata \
-    oracle/database:19.3.0-ee
+    oracle/database:21.3.0-ee
     
     Parameters:
        --name:        The name of the container (default: auto generated).
@@ -89,6 +96,9 @@ To run your Oracle Database image use the `docker run` command as follows:
                       Supported 19.3 onwards.
        -e ORACLE_CHARACTERSET:
                       The character set to use when creating the database (default: AL32UTF8).
+       -e ENABLE_ARCHIVELOG:
+                      To enable archive log mode when creating the database (default: false).
+                      Supported 19.3 onwards.
        -v /opt/oracle/oradata
                       The data volume to use for the database.
                       Has to be writable by the Unix "oracle" (uid: 54321) user inside the container!
@@ -128,13 +138,18 @@ In case these parameters are passed to the `docker run` command while reusing ex
 
 #### Changing the admin accounts passwords
 
-On the first startup of the container a random password will be generated for the database if not provided. You can find this password in the output line:
-
-    ORACLE PASSWORD FOR SYS, SYSTEM AND PDBADMIN:
+On the first startup of the container, a random password will be generated for the database if not provided. The user has to mandatorily change the password after the database is created and the corresponding container is healthy.
 
 The password for those accounts can be changed via the `docker exec` command. **Note**, the container has to be running:
 
     docker exec <container name> ./setPassword.sh <your password>
+
+This new password will be used afterwards.
+#### Enabling archive log mode while creating the database
+
+Archive mode can be enabled during the first time when database is created by setting ENABLE_ARCHIVELOG to `true` and passing it to `docker run` command. Archive logs are stored at the directory location: `/opt/oracle/oradata/$ORACLE_SID/archive_logs` inside the container.
+
+In case this parameter is set `true` and passed to `docker run` command while reusing existing datafiles, even though this parameter would be visible as set to `true` in the container environment, this would not be set inside the database. The value used at the time of database creation will be used.
 
 #### Running Oracle Database 18c Express Edition in a container
 

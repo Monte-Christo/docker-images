@@ -34,7 +34,6 @@ RUN set -eux; \
 		tar \
 	; \
 	rm -rf /var/cache/yum
-	
 
 # Default to UTF-8 file.encoding
 ENV LANG en_US.UTF-8
@@ -42,16 +41,15 @@ ENV LANG en_US.UTF-8
 # Environment variables for the builder image.  
 # Required to validate that you are using the correct file
 
-ENV JAVA_PKG=server-jre-8u281-linux-x64.tar.gz \
-	JAVA_SHA256=e452da44875d72b237860214f943af94eb3cbb76140a8df9b0f23cb65cb06cef \
+ENV JAVA_PKG=server-jre-8u301-linux-x64.tar.gz \
+	JAVA_SHA256=fe1cbfbb4d67a3bd5a9491de3c13ab2870043bad8b5e6654b22432126231f482 \
 	JAVA_HOME=/usr/java/jdk-8
 
 COPY $JAVA_PKG /tmp/jdk.tgz
 RUN set -eux; \
 	echo "$JAVA_SHA256 */tmp/jdk.tgz" | sha256sum -c -; \
 	mkdir -p "$JAVA_HOME"; \
-	tar --extract --file /tmp/jdk.tgz --directory "$JAVA_HOME" --strip-components 1; \
-	rm /tmp/jdk.tgz
+	tar --extract --file /tmp/jdk.tgz --directory "$JAVA_HOME" --strip-components 1; 
 
 ## Get a fresh version of SLIM for the final image
 
@@ -60,7 +58,7 @@ FROM oraclelinux:7-slim
 # Default to UTF-8 file.encoding
 ENV LANG en_US.UTF-8
 
-ENV JAVA_VERSION=1.8.0_281 \
+ENV JAVA_VERSION=1.8.0_301 \
 	JAVA_HOME=/usr/java/jdk-8 
 	
 ENV	PATH $JAVA_HOME/bin:$PATH
@@ -69,7 +67,9 @@ ENV	PATH $JAVA_HOME/bin:$PATH
 COPY --from=builder $JAVA_HOME $JAVA_HOME
 
 ##
-RUN	ln -sfT "$JAVA_HOME" /usr/java/default; \
+RUN	yum -y update; \
+	rm -rf /var/cache/yum; \
+	ln -sfT "$JAVA_HOME" /usr/java/default; \
 	ln -sfT "$JAVA_HOME" /usr/java/latest; \
 	for bin in "$JAVA_HOME/bin/"*; do \
 		base="$(basename "$bin")"; \
@@ -79,8 +79,5 @@ RUN	ln -sfT "$JAVA_HOME" /usr/java/default; \
 # -Xshare:dump will create a CDS archive to improve startup in subsequent runs	
 # the file will be stored as /usr/java/jdk-8/jre/lib/amd64/server/classes.jsa 
 # See https://docs.oracle.com/javase/8/docs/technotes/guides/vm/class-data-sharing.html
-	java -Xshare:dump; \
-	java -version; \
-	javac -version; \
-	grep VERSION= /etc/os-release
+	java -Xshare:dump;
 	

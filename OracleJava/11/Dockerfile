@@ -30,9 +30,7 @@ MAINTAINER Aurelio Garcia-Ribeyro <aurelio.garciaribeyro@oracle.com>
 RUN set -eux; \
 	yum install -y \
 		gzip \
-		tar \
-	; \
-	rm -rf /var/cache/yum
+		tar;
 	
 # Default to UTF-8 file.encoding
 ENV LANG en_US.UTF-8
@@ -41,8 +39,8 @@ ENV LANG en_US.UTF-8
 # Environment variables for the builder image.  
 # Required to validate that you are using the correct file
 
-ENV JAVA_PKG=jdk-11.0.10_linux-x64_bin.tar.gz \
-	JAVA_SHA256=94bd34f85ee38d3ef59e5289ec7450b9443b924c55625661fffe66b03f2c8de2 \
+ENV JAVA_PKG=jdk-11.0.12_linux-x64_bin.tar.gz \
+	JAVA_SHA256=d5d45826f835bd1ea069f9ff8bcd0f23c9f05c8d063b7df821960cfa765ed2cb \
 	JAVA_HOME=/usr/java/jdk-11
 
 ##
@@ -50,8 +48,7 @@ COPY $JAVA_PKG /tmp/jdk.tgz
 RUN set -eux; \
 	echo "$JAVA_SHA256 */tmp/jdk.tgz" | sha256sum -c -; \
 	mkdir -p "$JAVA_HOME"; \
-	tar --extract --file /tmp/jdk.tgz --directory "$JAVA_HOME" --strip-components 1; \
-	rm /tmp/jdk.tgz; 
+	tar --extract --file /tmp/jdk.tgz --directory "$JAVA_HOME" --strip-components 1
 	
 ## Get a fresh version of SLIM for the final image	
 FROM oraclelinux:7-slim
@@ -59,7 +56,7 @@ FROM oraclelinux:7-slim
 # Default to UTF-8 file.encoding
 ENV LANG en_US.UTF-8
 
-ENV JAVA_VERSION=11.0.10 \
+ENV JAVA_VERSION=11.0.12 \
 	JAVA_HOME=/usr/java/jdk-11
 
 ENV	PATH $JAVA_HOME/bin:$PATH	
@@ -68,6 +65,8 @@ ENV	PATH $JAVA_HOME/bin:$PATH
 COPY --from=builder $JAVA_HOME $JAVA_HOME
 
 RUN set -eux; \
+# Update the base image
+	yum -y update; \
 	yum install -y \
 # JDK assumes freetype is available		
 		freetype fontconfig \
@@ -81,9 +80,6 @@ RUN set -eux; \
 		alternatives --install "/usr/bin/$base" "$base" "$bin" 20000; \
 	done; \
 # -Xshare:dump will create a CDS archive to improve startup in subsequent runs	
-	java -Xshare:dump; \
-	java --version; \
-	javac --version; \
-	grep VERSION= /etc/os-release
+	java -Xshare:dump; 
 
 CMD ["jshell"]

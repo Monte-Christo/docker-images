@@ -87,16 +87,20 @@ EOF
 ###################################
 
 # Check whether container has enough memory
+if [[ -f /sys/fs/cgroup/cgroup.controllers ]]; then
+   memory=$(cat /sys/fs/cgroup/memory.max)
+else
+   memory=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+fi
+
 # Github issue #219: Prevent integer overflow,
-# only check if memory digits are less than 11 (single GB range and below) 
-if [ `cat /sys/fs/cgroup/memory/memory.limit_in_bytes | wc -c` -lt 11 ]; then
-   if [ `cat /sys/fs/cgroup/memory/memory.limit_in_bytes` -lt 2147483648 ]; then
-      echo "Error: The container doesn't have enough memory allocated."
-      echo "A database container needs at least 2 GB of memory."
-      echo "You currently only have $((`cat /sys/fs/cgroup/memory/memory.limit_in_bytes`/1024/1024/1024)) GB allocated to the container."
-      exit 1;
-   fi;
-fi;
+# only check if memory digits are less than 11 (single GB range and below)
+if [[ ${memory} != "max" && ${#memory} -lt 11 && ${memory} -lt 2147483648 ]]; then
+   echo "Error: The container doesn't have enough memory allocated."
+   echo "A database container needs at least 2 GB of memory."
+   echo "You currently only have $((memory/1024/1024)) MB allocated to the container."
+   exit 1;
+fi
 
 # Check that hostname doesn't container any "_"
 # Github issue #711
@@ -148,7 +152,7 @@ export ORACLE_CHARACTERSET=${ORACLE_CHARACTERSET:-AL32UTF8}
 . "$ORACLE_BASE/$RELINK_BINARY_FILE"
 
 # Check whether database already exists
-if [ -d $ORACLE_BASE/oradata/$ORACLE_SID ]; then
+if [ -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN} ]; then
    symLinkFiles;
    
    # Make sure audit file destination exists
@@ -166,13 +170,34 @@ else
   rm -f $ORACLE_HOME/network/admin/sqlnet.ora
   rm -f $ORACLE_HOME/network/admin/listener.ora
   rm -f $ORACLE_HOME/network/admin/tnsnames.ora
-   
+
+  # Clean up incomplete database
+  rm -rf $ORACLE_BASE/oradata/$ORACLE_SID
+  cp /etc/oratab oratab.bkp
+  sed "/$ORACLE_SID/d" oratab.bkp > /etc/oratab
+  rm -f oratab.bkp
+  rm -rf $ORACLE_BASE/cfgtoollogs/dbca/$ORACLE_SID
+  rm -rf $ORACLE_BASE/admin/$ORACLE_SID
+
+  # clean up zombie shared memory/semaphores
+  ipcs -m | awk ' /[0-9]/ {print $2}' | xargs -n1 ipcrm -m 2> /dev/null
+  ipcs -s | awk ' /[0-9]/ {print $2}' | xargs -n1 ipcrm -s 2> /dev/null
+
   # Create database
   $ORACLE_BASE/$CREATE_DB_FILE $ORACLE_SID $ORACLE_PDB $ORACLE_PWD || exit 1;
 
+  # Check whether database is successfully created
+  $ORACLE_BASE/$CHECK_DB_FILE
+  if [ $? -eq 0 ]; then
+    # Create a checkpoint file if database is successfully created
+    touch $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN}
+  fi
+
   # Move database operational files to oradata
   moveFiles;
-   
+
+  # Execute setup script for extensions
+  $ORACLE_BASE/$USER_SCRIPTS_FILE $ORACLE_BASE/scripts/extensions/setup
   # Execute custom provided setup scripts
   $ORACLE_BASE/$USER_SCRIPTS_FILE $ORACLE_BASE/scripts/setup
 fi;
@@ -183,7 +208,9 @@ if [ $? -eq 0 ]; then
   echo "#########################"
   echo "DATABASE IS READY TO USE!"
   echo "#########################"
-  
+
+  # Execute startup script for extensions
+  $ORACLE_BASE/$USER_SCRIPTS_FILE $ORACLE_BASE/scripts/extensions/startup
   # Execute custom provided startup scripts
   $ORACLE_BASE/$USER_SCRIPTS_FILE $ORACLE_BASE/scripts/startup
   
